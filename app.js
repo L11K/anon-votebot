@@ -2,6 +2,7 @@ const Discord = require('discord.js')
 const stringArgv = require('string-argv')
 const arg = require('arg')
 const ms = require('ms')
+const emojiRegex = require('emoji-regex/text')()
 
 const client = new Discord.Client()
 
@@ -14,10 +15,9 @@ client.on('ready', () => {
   })
 })
 
-
-// * \`EMOJI\` (multiple allowed) (optional): option for which people can vote for. defaults to :red_circle: and :large_blue_circle:
 const makeOptHelp = `
 * \`TIME\` (only use once) (optional): length of time at which votes will be frozen. use any time like \`1 hour\`, \`5m\`, or \`3.45 hrs\`. if not provided, vote does not expire
+* \`EMOJI\` (multiple allowed) (optional): option for which people can vote for. defaults to :red_circle: and :large_blue_circle:
 * \`@SOMEONE\` (multiple allowed) (required): a person who is allowed to vote. the bot sends them a DM
 `
 
@@ -44,18 +44,19 @@ const commands = new Map([
   }]],
   ['make', [
     'make a new vote',
-    '[-l|--length] TIME [-v|--voter] @SOMEONE message',
+    '[-l|--length] TIME [-o|--option] EMOJI [-v|--voter] @SOMEONE message',
     async (createMsg, content) => {
-      let args
       const argVoters = new Set()
+      const argOptions = new Map()
+      let argOptionReactions
       let argLength
       let argContent
       try {
-        args = arg({
+        const args = arg({
           '--length': String,
           '-l': '--length',
-          // '--option': [String],
-          // '-o': '--option',
+          '--option': [String],
+          '-o': '--option',
           '--voter': [String],
           '-v': '--voter',
         }, {
@@ -77,17 +78,39 @@ const commands = new Map([
               if (roleMatch === null) {
                 throw new Error()
               }
-              for (argVoter of createMsg.guild.roles.get(roleMatch[0].replace(/[<>@&]/g, '')).members.keys()) {
+              for (argVoter of createMsg.guild.roles.get(roleMatch[0].replace(/[<>@&!]/g, '')).members.keys()) {
                 argVoters.add(argVoter)
               }
             } else {
-              argVoters.add(userMatch[0].replace(/[<>@]/g, ''))
+              argVoters.add(userMatch[0].replace(/[<>@!]/g, ''))
             }
           }
         }))
         if (args['--length'] !== undefined) {
           argLength = ms(args['--length'])
         }
+        if (args['--option'] !== undefined) {
+          args['--option'].forEach((opt) => {
+            const optMatch = opt.match(/<:.*:[0-9]+>/)
+            if (optMatch === null) {
+              const emojiMatch = opt.match(emojiRegex)
+              if (emojiMatch === null) {
+                throw Error()
+              }
+              argOptions.set(emojiMatch[0], emojiMatch[0])
+            } else {
+              const optSf = optMatch[0].replace(/(<:.*:)?>?/g, '')
+              argOptions.set(optSf, createMsg.guild.emojis.get(optSf))
+            }
+          })
+        }
+        if (argOptions.size === 0) {
+          argOptions.set('\ud83d\udd34', '\ud83d\udd34')
+        }
+        if (argOptions.size === 1) {
+          argOptions.set('\ud83d\udd35', '\ud83d\udd35')
+        }
+        argOptionReactions = [...argOptions.keys()]
         argContent = args._.join(' ')
         if (argContent === '') {
           throw new Error()
@@ -96,7 +119,7 @@ const commands = new Map([
         createMsg.channel.send(`<@${createMsg.author.id}> parsing your command failed`)
         return
       }
-      let votes = [0, 0]
+      let votes = Array(argOptions.size).fill(0)
       let votesClosed = false
       let voteMsgs = []
       const makeReport = () => new Discord.RichEmbed({
@@ -108,7 +131,7 @@ const commands = new Map([
           inline: false,
         }, {
           name: 'results',
-          value: `\ud83d\udd34: ${votes[0]} \ud83d\udd35: ${votes[1]}`,
+          value: [...argOptions.values()].map((argOption, i) => `${argOption}: ${votes[i]}`).join(' '),
           inline: false,
         }, {
           name: votesClosed ? 'closed' : 'close',
@@ -134,19 +157,20 @@ const commands = new Map([
             inline: false,
           }, {
             name: 'instructions',
-            value: 'react with \ud83d\udd34 or \ud83d\udd35 to vote',
+            value: `react with ${[...argOptions.values()].map(argOption => argOption).join(' or ')} to vote`,
             inline: false,
           }],
         }))
-        await voteMsg.react('\ud83d\udd34')
-        await voteMsg.react('\ud83d\udd35')
+        for (argOption of argOptions) {
+          await voteMsg.react(argOption[1])
+        }
         let voted = false
         const sentCollector = new Discord.ReactionCollector(voteMsg, (reaction) => {
           const reactionEmoji = reaction.emoji.toString()
           if (!reaction.users.some(reactionUser => reactionUser.id !== client.user.id)) {
             return false
           }
-          if (reactionEmoji !== '\ud83d\udd34' && reactionEmoji !== '\ud83d\udd35') {
+          if (!argOptionReactions.includes(reactionEmoji.replace(/(<:.*:)?>?/g, ''))) {
             return false
           }
           return true
@@ -161,7 +185,7 @@ const commands = new Map([
           const reactionEmoji = reaction.emoji.toString()
           voteMsg.edit(new Discord.RichEmbed({
             color: 0x33ff33,
-            description: 'you have already voted',
+            description: 'you have voted',
             fields: [{
               name: 'vote content',
               value: argContent,
@@ -174,11 +198,8 @@ const commands = new Map([
           }))
           const sentMsgElement = voteMsgs.find(sentMsgElement => sentMsgElement[0] === voteMsg)
           sentMsgElement[1] = reactionEmoji
-          if (reactionEmoji === '\ud83d\udd34') {
-            votes[0] += 1
-          } else {
-            votes[1] += 1
-          }
+          const reactionIndex = argOptionReactions.indexOf(reactionEmoji.replace(/(<:.*:)?>?/g, ''))
+          votes[reactionIndex] += 1
           reportMsg.edit(makeReport())
         })
       }))

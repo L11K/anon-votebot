@@ -2,7 +2,7 @@
 
 ### [add it to your server!](https://discordapp.com/api/oauth2/authorize?client_id=505471909941739546&scope=bot&permissions=2112)
 
-the command prefix is `%`. run commands with
+the command prefix is `%`, or you can @mention the bot. run commands with
 ```
 %command [--option optionvalue] [--option2 option2value] further arguments
 ```
