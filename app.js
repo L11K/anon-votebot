@@ -47,7 +47,7 @@ const commands = new Map([
     '[-l|--length] TIME [-v|--voter] @SOMEONE message',
     async (createMsg, content) => {
       let args
-      const argVoters = []
+      const argVoters = new Set()
       let argLength
       let argContent
       try {
@@ -61,17 +61,28 @@ const commands = new Map([
         }, {
           argv: stringArgv(content),
         })
-        await Promise.all(args['--voter'].map(async (sf) => {
-          const userMatch = sf.match(/<@!?[0-9]+>/)
-          if (userMatch === null) {
-            const roleMatch = sf.match(/<@&[0-9]+>/)
-            if (roleMatch === null) {
-              throw new Error()
+        await Promise.all(args['--voter'].map(async (voterValue) => {
+          if (voterValue.includes('@everyone')) {
+            for (argVoter of createMsg.channel.members.keys()) {
+              argVoters.add(argVoter)
             }
-            console.log(roleMatch[0], roleMatch[0].replace(/[<>@&]/g, ''))
-            argVoters.push(...(createMsg.guild.roles.get(roleMatch[0].replace(/[<>@&]/g, '')).members.values()))
+          } else if (voterValue.includes('@here')) {
+            for (argVoter of [...createMsg.channel.members.values()].filter(member => member.presence.status === 'online')) {
+              argVoters.add(argVoter.id)
+            }
           } else {
-            argVoters.push(await client.fetchUser(userMatch[0].replace(/[<>@]/g, '')))
+            const userMatch = voterValue.match(/<@!?[0-9]+>/)
+            if (userMatch === null) {
+              const roleMatch = voterValue.match(/<@&[0-9]+>/)
+              if (roleMatch === null) {
+                throw new Error()
+              }
+              for (argVoter of createMsg.guild.roles.get(roleMatch[0].replace(/[<>@&]/g, '')).members.keys()) {
+                argVoters.add(argVoter)
+              }
+            } else {
+              argVoters.add(userMatch[0].replace(/[<>@]/g, ''))
+            }
           }
         }))
         if (args['--length'] !== undefined) {
@@ -109,20 +120,21 @@ const commands = new Map([
       })
       const reportMsg = await createMsg.channel.send(makeReport())
       await reportMsg.react('\ud83d\uded1')
-      await Promise.all(argVoters.map(async (user) => {
+      await Promise.all([...argVoters.values()].map(async (userSf) => {
+        const user = await client.fetchUser(userSf)
         if (user.bot) {
           return
         }
         const voteMsg = await (await user.createDM()).send(new Discord.RichEmbed({
           color: 0x33ff33,
-          description: `you have a new vote from ${createMsg.author.username}#${createMsg.author.discriminator}`,
+          description: `you have a new vote from <@${createMsg.author.id}>`,
           fields: [{
             name: 'vote content',
             value: argContent,
             inline: false,
           }, {
             name: 'instructions',
-            value: 'react with \ud83d\udd34 or \ud83d\udd35',
+            value: 'react with \ud83d\udd34 or \ud83d\udd35 to vote',
             inline: false,
           }],
         }))
