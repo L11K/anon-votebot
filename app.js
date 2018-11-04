@@ -69,7 +69,7 @@ const commands = new Map([
               argVoters.add(argVoter)
             }
           } else if (voterValue.includes('@here')) {
-            for (argVoter of [...createMsg.channel.members.values()].filter(member => member.presence.status === 'online')) {
+            for (argVoter of [...createMsg.channel.members.values()].filter(member => member.presence.status !== 'offline')) {
               argVoters.add(argVoter.id)
             }
           } else {
