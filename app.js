@@ -7,6 +7,7 @@ const emojiRegex = require('emoji-regex/text')()
 const client = new Discord.Client()
 
 const prefix = '%'
+const richColor = 0x33ff33
 
 client.on('ready', () => {
   console.log('ready!')
@@ -29,7 +30,7 @@ const commands = new Map([
       inline: false,
     }))
     await msg.channel.send(new Discord.RichEmbed({
-      color: 0x33ff33,
+      color: richColor,
       description: 'anonymously vote with anon votebot!',
       fields: [{
         name: 'calling commands',
@@ -123,8 +124,11 @@ const commands = new Map([
       let votesClosed = false
       let voteMsgs = []
       const makeReport = () => new Discord.RichEmbed({
-        color: 0x33ff33,
-        description: `<@${createMsg.author.id}> made a vote`,
+        color: richColor,
+        author: {
+          icon_url: createMsg.author.avatarURL,
+          name: `${createMsg.author.username}#${createMsg.author.discriminator}`,
+        },
         fields: [{
           name: 'vote content',
           value: argContent,
@@ -142,67 +146,6 @@ const commands = new Map([
         }],
       })
       const reportMsg = await createMsg.channel.send(makeReport())
-      await reportMsg.react('\ud83d\uded1')
-      await Promise.all([...argVoters.values()].map(async (userSf) => {
-        const user = await client.fetchUser(userSf)
-        if (user.bot) {
-          return
-        }
-        const voteMsg = await (await user.createDM()).send(new Discord.RichEmbed({
-          color: 0x33ff33,
-          description: `you have a new vote from <@${createMsg.author.id}>`,
-          fields: [{
-            name: 'vote content',
-            value: argContent,
-            inline: false,
-          }, {
-            name: 'instructions',
-            value: `react with ${[...argOptions.values()].map(argOption => argOption).join(' or ')} to vote`,
-            inline: false,
-          }],
-        }))
-        for (argOption of argOptions) {
-          await voteMsg.react(argOption[1])
-        }
-        let voted = false
-        const sentCollector = new Discord.ReactionCollector(voteMsg, (reaction) => {
-          const reactionEmoji = reaction.emoji.toString()
-          if (!reaction.users.some(reactionUser => reactionUser.id !== client.user.id)) {
-            return false
-          }
-          if (!argOptionReactions.includes(reactionEmoji.replace(/(<:.*:)?>?/g, ''))) {
-            return false
-          }
-          return true
-        })
-        voteMsgs.push([voteMsg, null, sentCollector])
-        sentCollector.on('collect', (reaction) => {
-          if (voted || votesClosed) {
-            return
-          }
-          voted = true
-          sentCollector.stop()
-          const reactionEmoji = reaction.emoji.toString()
-          voteMsg.edit(new Discord.RichEmbed({
-            color: 0x33ff33,
-            description: 'you have voted',
-            fields: [{
-              name: 'vote content',
-              value: argContent,
-              inline: false,
-            }, {
-              name: 'your vote',
-              value: reactionEmoji,
-              inline: false,
-            }],
-          }))
-          const sentMsgElement = voteMsgs.find(sentMsgElement => sentMsgElement[0] === voteMsg)
-          sentMsgElement[1] = reactionEmoji
-          const reactionIndex = argOptionReactions.indexOf(reactionEmoji.replace(/(<:.*:)?>?/g, ''))
-          votes[reactionIndex] += 1
-          reportMsg.edit(makeReport())
-        })
-      }))
       const closeVote = () => {
         if (votesClosed) {
           return
@@ -215,7 +158,11 @@ const commands = new Map([
             sentMsg[2].stop()
           }
           sentMsg[0].edit(new Discord.RichEmbed({
-            color: 0x33ff33,
+            color: richColor,
+            author: {
+              icon_url: createMsg.author.avatarURL,
+              name: `${createMsg.author.username}#${createMsg.author.discriminator}`,
+            },
             description: 'voting is now closed',
             fields: [{
               name: 'vote content',
@@ -247,6 +194,75 @@ const commands = new Map([
           closeVote()
         }, argLength)
       }
+      await reportMsg.react('\ud83d\uded1')
+      await Promise.all([...argVoters.values()].map(async (userSf) => {
+        const user = await client.fetchUser(userSf)
+        if (user.bot) {
+          return
+        }
+        const voteMsg = await (await user.createDM()).send(new Discord.RichEmbed({
+          color: richColor,
+          author: {
+            icon_url: createMsg.author.avatarURL,
+            name: `${createMsg.author.username}#${createMsg.author.discriminator}`,
+          },
+          description: `you have a new vote!`,
+          fields: [{
+            name: 'vote content',
+            value: argContent,
+            inline: false,
+          }, {
+            name: 'instructions',
+            value: `react with ${[...argOptions.values()].map(argOption => argOption).join(' or ')} to vote`,
+            inline: false,
+          }],
+        }))
+        let voted = false
+        const sentCollector = new Discord.ReactionCollector(voteMsg, (reaction) => {
+          const reactionEmoji = reaction.emoji.toString()
+          if (!reaction.users.some(reactionUser => reactionUser.id !== client.user.id)) {
+            return false
+          }
+          if (!argOptionReactions.includes(reactionEmoji.replace(/(<:.*:)?>?/g, ''))) {
+            return false
+          }
+          return true
+        })
+        voteMsgs.push([voteMsg, null, sentCollector])
+        sentCollector.on('collect', (reaction) => {
+          if (voted || votesClosed) {
+            return
+          }
+          voted = true
+          sentCollector.stop()
+          const reactionEmoji = reaction.emoji.toString()
+          voteMsg.edit(new Discord.RichEmbed({
+            color: richColor,
+            author: {
+              icon_url: createMsg.author.avatarURL,
+              name: `${createMsg.author.username}#${createMsg.author.discriminator}`,
+            },
+            description: 'you have voted',
+            fields: [{
+              name: 'vote content',
+              value: argContent,
+              inline: false,
+            }, {
+              name: 'your vote',
+              value: reactionEmoji,
+              inline: false,
+            }],
+          }))
+          const sentMsgElement = voteMsgs.find(sentMsgElement => sentMsgElement[0] === voteMsg)
+          sentMsgElement[1] = reactionEmoji
+          const reactionIndex = argOptionReactions.indexOf(reactionEmoji.replace(/(<:.*:)?>?/g, ''))
+          votes[reactionIndex] += 1
+          reportMsg.edit(makeReport())
+        })
+        for (argOption of argOptions) {
+          await voteMsg.react(argOption[1])
+        }
+      }))
   }]],
 ])
 
@@ -256,13 +272,13 @@ client.on('message', (msg) => {
   }
   let content = msg.content.trim()
   const mentionsBot = content.startsWith(`<@${client.user.id}>`)
-  const prefixBot = content.startsWith(prefix) 
-  if (!prefixBot && !mentionsBot) {
+  const prefixesBot = content.startsWith(prefix) 
+  if (!prefixesBot && !mentionsBot) {
     return
   }
   content = content.substr(mentionsBot ? (client.user.id.length + 3) : prefix.length)
-  const commandName = content.trim().split(' ', 1)[0]
-  const command = commands.get(commandName.toLowerCase())
+  const commandName = content.trim().split(' ', 1)[0].toLowerCase()
+  const command = commands.get(commandName)
   if (command === undefined) {
     commands.get('help')[2](msg)
     return
